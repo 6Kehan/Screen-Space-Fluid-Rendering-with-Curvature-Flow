@@ -149,6 +149,8 @@
     <None Include="shaders\depth.frag" />
     <None Include="shaders\model.frag" />
     <None Include="shaders\model.vert" />
+    <None Include="shaders\noise.frag" />
+    <None Include="shaders\noise.vert" />
     <None Include="shaders\particle.vert" />
     <None Include="shaders\screen.vert" />
     <None Include="shaders\skybox.frag" />

@@ -55,5 +55,11 @@
     <None Include="shaders\skybox.vert">
       <Filter>源文件</Filter>
     </None>
+    <None Include="shaders\noise.frag">
+      <Filter>源文件</Filter>
+    </None>
+    <None Include="shaders\noise.vert">
+      <Filter>源文件</Filter>
+    </None>
   </ItemGroup>
 </Project>

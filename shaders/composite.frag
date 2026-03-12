@@ -4,10 +4,17 @@ in vec2 TexCoords;
 
 uniform sampler2D smoothedDepthMap;
 uniform sampler2D thicknessMap;
+uniform sampler2D noiseMap;
 uniform mat4 invProjection;
 uniform vec2 texelSize;
 
-// 从屏幕 NDC 坐标反推视图空间坐标 (View Space)
+uniform vec3 fluidColor;
+uniform float surfaceRippleStrength;
+uniform float foamThresholdMin;
+uniform float foamThresholdMax;
+// 【新增】：接收 UI 传来的透明度缩放系数
+uniform float transparencyScale; 
+
 vec3 uvToViewSpace(vec2 uv, float depth) {
     float z_ndc = depth * 2.0 - 1.0;
     vec4 clipSpace = vec4(uv * 2.0 - 1.0, z_ndc, 1.0);
@@ -15,44 +22,64 @@ vec3 uvToViewSpace(vec2 uv, float depth) {
     return viewSpace.xyz / viewSpace.w;
 }
 
-// 屏幕空间有限差分计算法线
 vec3 reconstructNormal(vec2 uv, float depth, vec3 viewPos) {
     float ddx = texture(smoothedDepthMap, uv + vec2(texelSize.x, 0.0)).r;
     float ddy = texture(smoothedDepthMap, uv + vec2(0.0, texelSize.y)).r;
-    
     vec3 viewPosRight = uvToViewSpace(uv + vec2(texelSize.x, 0.0), ddx);
     vec3 viewPosUp    = uvToViewSpace(uv + vec2(0.0, texelSize.y), ddy);
-
-    vec3 ddx_pos = viewPosRight - viewPos;
-    vec3 ddy_pos = viewPosUp - viewPos;
-
-    return normalize(cross(ddx_pos, ddy_pos));
+    return normalize(cross(viewPosRight - viewPos, viewPosUp - viewPos));
 }
 
 void main() {
     float depth = texture(smoothedDepthMap, TexCoords).r;
-    // 如果是背景深度，则直接丢弃
     if (depth >= 1.0) discard;
 
     float thickness = texture(thicknessMap, TexCoords).r;
     vec3 viewPos = uvToViewSpace(TexCoords, depth);
     vec3 normal = reconstructNormal(TexCoords, depth, viewPos);
 
-    // 视角与光照向量
-    vec3 viewDir = normalize(-viewPos);
-    vec3 lightDir = normalize(vec3(1.0, 1.0, 1.0));
-    vec3 halfDir = normalize(lightDir + viewDir);
-
-    // 论文 3.5 节的光照模型：菲涅耳方程
-    float fresnel = 0.04 + (1.0 - 0.04) * pow(1.0 - max(dot(normal, viewDir), 0.0), 5.0);
-    float spec = pow(max(dot(normal, halfDir), 0.0), 128.0);
-
-    // 颜色随厚度衰减
-    vec3 fluidColor = vec3(0.1, 0.4, 0.8);
-    // 流体越厚，吸收背景越多，颜色越深
-    vec3 refractionColor = mix(vec3(1.0), fluidColor, clamp(thickness * 0.5, 0.0, 1.0)); 
-
-    vec3 finalColor = refractionColor * (1.0 - fresnel) + vec3(1.0) * fresnel + vec3(1.0) * spec;
+    float noiseVal = texture(noiseMap, TexCoords).r;
     
-    FragColor = vec4(finalColor, 1.0);
+    // 计算法线波纹
+    float n_dx = texture(noiseMap, TexCoords + vec2(texelSize.x, 0.0)).r - 
+                 texture(noiseMap, TexCoords - vec2(texelSize.x, 0.0)).r;
+    float n_dy = texture(noiseMap, TexCoords + vec2(0.0, texelSize.y)).r - 
+                 texture(noiseMap, TexCoords - vec2(0.0, texelSize.y)).r;
+                 
+    vec2 noiseGrad = vec2(n_dx, n_dy) * surfaceRippleStrength;
+    if (length(noiseGrad) > 0.8) {
+        noiseGrad = normalize(noiseGrad) * 0.8;
+    }
+    normal = normalize(normal - vec3(noiseGrad, 0.0)); 
+
+    // 计算光照参数
+    vec3 viewDir = normalize(-viewPos);
+    vec3 lightDir = normalize(vec3(0.5, 1.0, 0.8)); 
+    vec3 halfDir = normalize(lightDir + viewDir);
+    float fresnel = 0.04 + (1.0 - 0.04) * pow(1.0 - max(dot(normal, viewDir), 0.0), 5.0);
+    float spec = pow(max(dot(normal, halfDir), 0.0), 256.0); 
+
+    // ==========================================================
+    // 全新混合逻辑：真实的 Alpha 输出
+    // ==========================================================
+    
+    // 1. 根据厚度和UI参数，计算基础水体的阻光度（利用指数衰减，防止越界）
+    float fluidAlpha = 1.0 - exp(-thickness * transparencyScale);
+    
+    // 2. 计算流体自身颜色 + 反射光
+    vec3 litColor = fluidColor * (1.0 - fresnel) + vec3(1.0) * fresnel + vec3(0.6) * spec;
+    
+    // 3. 计算并混合泡沫层
+    float foamIntensity = smoothstep(foamThresholdMin, foamThresholdMax, noiseVal);
+    foamIntensity = clamp(foamIntensity * 0.8, 0.0, 0.8); 
+    vec3 foamColor = vec3(0.9, 0.95, 0.98); 
+    vec3 finalColor = mix(litColor, foamColor, foamIntensity);
+    
+    // 4. 关键：确保边缘反射（Fresnel）和表面泡沫始终是不透明的，无论水有多浅！
+    float finalAlpha = max(fluidAlpha, foamIntensity); 
+    finalAlpha = max(finalAlpha, fresnel); 
+    
+    // 最终输出 RGBA
+    FragColor = vec4(finalColor, finalAlpha);
+    gl_FragDepth = depth;
 }
