@@ -8,6 +8,9 @@ uniform sampler2D smoothedDepthMap;
 uniform mat4 invProjection;
 uniform vec2 texelSize;
 
+// 【新增】：接收 UI 传来的噪声生成倍率
+uniform float noiseMultiplier; 
+
 vec3 permute(vec3 x) { return mod(((x*34.0)+1.0)*x, 289.0); }
 float snoise(vec2 v){
     const vec4 C = vec4(0.211324865405187, 0.366025403784439,
@@ -52,8 +55,8 @@ void main() {
     float n = snoise(N * 3.0 + NoiseOffset); 
     n = (n + 1.0) * 0.5;
 
-    // 【修复点】：增加 * 0.1，大幅降低单粒子的噪声贡献
-    float intensity = n * xyFalloff * depthFalloff * 0.1;
+    // 【修改】：使用外部传入的 multiplier 动态控制强度
+    float intensity = n * xyFalloff * depthFalloff * noiseMultiplier;
 
     FragColor = vec4(intensity, 0.0, 0.0, 1.0);
 }
