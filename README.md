@@ -1,6 +1,8 @@
 # Screen-Space Fluid Rendering with Curvature Flow
 
-基于屏幕空间的流体渲染系统，使用曲率流（Curvature Flow）进行流体表面平滑。本项目参照论文 *Screen Space Fluid Rendering with Curvature Flow* 实现，作为 CS7GV3 课程作业。
+基于屏幕空间的流体渲染系统，使用曲率流（Curvature Flow）进行流体表面平滑。
+
+[![演示视频](https://img.youtube.com/vi/8rKzl_aD0ac/0.jpg)](https://youtu.be/8rKzl_aD0ac)
 
 ## 渲染管线
 
@@ -86,10 +88,9 @@
 
 右侧 ImGui 面板提供实时参数调节。
 
-## 参考
+## 参考论文
 
-- [Screen Space Fluid Rendering with Curvature Flow](1507149.1507164.pdf) — 本项目的核心参考论文
-- CS7GV3_A5_Report_Kehan.pdf — 课程项目报告
+- *Screen Space Fluid Rendering with Curvature Flow* — 本项目的核心参考论文
 
 ## 许可
 
