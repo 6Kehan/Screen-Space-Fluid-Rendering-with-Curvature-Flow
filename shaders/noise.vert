@@ -13,7 +13,7 @@ void main() {
     vec4 viewPos = view * vec4(aPos, 1.0);
     ViewPos = viewPos.xyz;
     
-    // 使用 gl_VertexID 作为伪随机数种子，为每个粒子生成独一无二的固定噪声偏移
+    // Use gl_VertexID as pseudorandom seed to generate noise offset for each particle
     NoiseOffset = vec2(
         fract(sin(float(gl_VertexID) * 12.9898) * 43758.5453),
         fract(cos(float(gl_VertexID) * 78.233) * 43758.5453)

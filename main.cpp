@@ -4,16 +4,13 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-// Assimp 模型加载库
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
 
-// 引入 stb_image 读取 HDR 文件和贴图
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
-// --- 引入 ImGui ---
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
@@ -27,7 +24,7 @@
 const unsigned int SCR_WIDTH = 1024;
 const unsigned int SCR_HEIGHT = 768;
 
-// --- 摄像机系统全局变量 ---
+// Camera global variables
 glm::vec3 cameraPos = glm::vec3(0.0f, 4.0f, 8.0f);
 glm::vec3 cameraFront = glm::vec3(0.0f, -0.3f, -1.0f);
 glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
@@ -41,7 +38,6 @@ float lastY = SCR_HEIGHT / 2.0;
 float deltaTime = 0.0f;
 float lastFrameTime = 0.0f;
 
-// 鼠标控制状态
 bool cursorEnabled = false;
 bool tabKeyPressed = false;
 
@@ -86,9 +82,8 @@ void processInput(GLFWwindow* window) {
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) cameraPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
 }
 
-// ==========================================
-// --- 专门用于加载独立 PBR 贴图的函数 ---
-// ==========================================
+
+// External texture loading
 unsigned int loadTexture(char const* path) {
     unsigned int textureID;
     glGenTextures(1, &textureID);
@@ -101,6 +96,7 @@ unsigned int loadTexture(char const* path) {
         else if (nrComponents == 4) format = GL_RGBA;
 
         glBindTexture(GL_TEXTURE_2D, textureID);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
         glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
         glGenerateMipmap(GL_TEXTURE_2D);
 
@@ -108,6 +104,7 @@ unsigned int loadTexture(char const* path) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
         stbi_image_free(data);
     }
     else {
@@ -115,6 +112,56 @@ unsigned int loadTexture(char const* path) {
         stbi_image_free(data);
     }
     return textureID;
+}
+
+// Extract embedded texture from GLB memory
+unsigned int loadGLBBaseColor(const std::string& path) {
+    Assimp::Importer importer;
+    const aiScene* scene = importer.ReadFile(path, 0);
+    if (!scene || scene->mNumTextures == 0) return 0;
+
+    aiTexture* aiTex = scene->mTextures[0];
+    int width, height, nrComponents;
+    unsigned char* data = stbi_load_from_memory(
+        reinterpret_cast<unsigned char*>(aiTex->pcData),
+        aiTex->mWidth, &width, &height, &nrComponents, 0
+    );
+
+    unsigned int textureID = 0;
+    if (data) {
+        glGenTextures(1, &textureID);
+        GLenum format = GL_RGB;
+        if (nrComponents == 1) format = GL_RED;
+        else if (nrComponents == 3) format = GL_RGB;
+        else if (nrComponents == 4) format = GL_RGBA;
+
+        glBindTexture(GL_TEXTURE_2D, textureID);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+        glGenerateMipmap(GL_TEXTURE_2D);
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+        stbi_image_free(data);
+    }
+    return textureID;
+}
+
+// Create solid color placeholder texture
+unsigned int createDummyTexture(unsigned char r, unsigned char g, unsigned char b, unsigned char a = 255) {
+    unsigned int texID;
+    glGenTextures(1, &texID);
+    glBindTexture(GL_TEXTURE_2D, texID);
+    unsigned char pixel[] = { r, g, b, a };
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixel);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    return texID;
 }
 
 struct Particle { glm::vec3 position; glm::vec3 velocity; };
@@ -136,7 +183,6 @@ struct Mesh {
     }
 };
 
-// --- 通用模型加载 (FBX/GLTF/OBJ) ---
 std::vector<Mesh> loadModel(std::string const& path) {
     std::vector<Mesh> meshes; Assimp::Importer importer;
     const aiScene* scene = importer.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenNormals | aiProcess_OptimizeMeshes);
@@ -175,6 +221,7 @@ int main() {
 
     GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Screen Space Fluid Rendering", NULL, NULL);
     glfwMakeContextCurrent(window);
+    glfwSwapInterval(0);
 
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     glfwSetCursorPosCallback(window, mouse_callback);
@@ -198,6 +245,8 @@ int main() {
     Shader compositeShader("shaders/screen.vert", "shaders/composite.frag");
     Shader skyboxShader("shaders/skybox.vert", "shaders/skybox.frag");
     Shader modelShader("shaders/model.vert", "shaders/model.frag");
+    Shader gaussianShader("shaders/screen.vert", "shaders/gaussian_blur.frag");
+    Shader bilateralShader("shaders/screen.vert", "shaders/bilateral_blur.frag");
 
     std::vector<Particle> particles;
     particles.reserve(MAX_PARTICLES);
@@ -232,19 +281,27 @@ int main() {
     glBufferData(GL_ARRAY_BUFFER, sizeof(skyboxVertices), &skyboxVertices, GL_STATIC_DRAW);
     glEnableVertexAttribArray(0); glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
 
-    // ==========================================
-    // --- 加载 FBX 模型和专属 PBR 贴图 ---
-    // ==========================================
+    // Load water pipe model and textures
     std::vector<Mesh> pipeMeshes = loadModel("waters-pipe.fbx");
+    stbi_set_flip_vertically_on_load(false);
+    unsigned int pipeAlbedo = loadTexture("textures/T_DefaultMaterial_BaseColor.png");
+    unsigned int pipeMetallic = loadTexture("textures/T_DefaultMaterial_Metallic.png");
+    unsigned int pipeRoughness = loadTexture("textures/T_DefaultMaterial_Roughness.png");
+    unsigned int pipeAO = loadTexture("textures/T_DefaultMaterial_AO.png");
 
-    // 手动加载四张关键物理贴图
-    stbi_set_flip_vertically_on_load(false); // 通常模型贴图不需要像 HDR 那样垂直翻转
-    unsigned int albedoMap = loadTexture("textures/T_DefaultMaterial_BaseColor.png");
-    unsigned int metallicMap = loadTexture("textures/T_DefaultMaterial_Metallic.png");
-    unsigned int roughnessMap = loadTexture("textures/T_DefaultMaterial_Roughness.png");
-    unsigned int aoMap = loadTexture("textures/T_DefaultMaterial_AO.png");
-    stbi_set_flip_vertically_on_load(true); // 为 HDR 贴图恢复翻转
+    // Load slate model and extract materials
+    std::vector<Mesh> slabMeshes = loadModel("edur681_banded_slate.glb");
 
+    // Read original color texture directly from model memory
+    unsigned int slabAlbedo = loadGLBBaseColor("edur681_banded_slate.glb");
+    if (slabAlbedo == 0) slabAlbedo = createDummyTexture(110, 115, 120);
+
+    unsigned int slabAO = createDummyTexture(255, 255, 255);         // No occlusion
+    unsigned int dummyMetallic = createDummyTexture(0, 0, 0);        // Non-metallic
+    unsigned int dummyRoughness = createDummyTexture(200, 200, 200); // Rough rock surface
+
+    // Load skybox
+    stbi_set_flip_vertically_on_load(true);
     int width, height, nrComponents;
     float* data = stbi_loadf("story_studio_01_4k.hdr", &width, &height, &nrComponents, 0);
     unsigned int hdrTexture = 0;
@@ -286,12 +343,13 @@ int main() {
     glEnable(GL_PROGRAM_POINT_SIZE);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    // ================== ImGui 变量 ==================
+    // ImGui parameters
     int ui_emitRate = 40;
     float ui_pointRadius = 0.15f;
     float ui_thicknessRadius = 0.3f;
     int ui_smoothingIterations = 20;
-    float ui_smoothingDt = 0.0005f;
+    float ui_smoothingDt = 0.002f;
+    int ui_smoothingMethod = 0;
     glm::vec3 ui_fluidColor = glm::vec3(0.1f, 0.4f, 0.8f);
     float ui_transparencyScale = 0.8f;
     float ui_refractionStrength = 0.05f;
@@ -315,14 +373,26 @@ int main() {
 
         ImGui::Begin("Fluid Simulation Parameters", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
         ImGui::Separator();
+        ImGui::Text("Performance: %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+        ImGui::Separator();
         ImGui::Text("Simulation");
         ImGui::Checkbox("Auto Emit Particles", &ui_autoEmit);
         ImGui::SliderInt("Emit Rate", &ui_emitRate, 1, 100);
+
         ImGui::Separator();
-        ImGui::Text("Rendering (Curvature Flow)");
+        // UI dropdown menu
+        ImGui::Text("Rendering (Smoothing Algorithm)");
+        const char* methods[] = { "Curvature Flow", "Gaussian Blur", "Bilateral Blur" };
+        ImGui::Combo("Algorithm", &ui_smoothingMethod, methods, IM_ARRAYSIZE(methods));
+
         ImGui::SliderFloat("Depth Point Radius", &ui_pointRadius, 0.05f, 0.5f);
         ImGui::SliderFloat("Thickness Radius", &ui_thicknessRadius, 0.05f, 1.0f);
         ImGui::SliderInt("Smoothing Iterations", &ui_smoothingIterations, 0, 100);
+        // Only show integration timestep slider for curvature flow
+        if (ui_smoothingMethod == 0) {
+            ImGui::SliderFloat("Integration dt", &ui_smoothingDt, 0.0001f, 0.05f, "%.4f");
+        }
+
         ImGui::Separator();
         ImGui::Text("Fluid Optics (Refraction)");
         ImGui::ColorEdit3("Fluid Color", (float*)&ui_fluidColor);
@@ -338,7 +408,7 @@ int main() {
         if (ImGui::Button("Reset Particles")) particles.clear();
         ImGui::End();
 
-        // --- 1. 粒子发射逻辑 ---
+        // Particle emission and physics logic
         if (ui_autoEmit || glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
             for (int i = 0; i < ui_emitRate; i++) {
                 if (particles.size() < MAX_PARTICLES) {
@@ -353,9 +423,8 @@ int main() {
             }
         }
 
-        // --- 2. 轻量级物理逻辑 ---
         float sim_dt = 0.016f;
-        float damping = 0.4f;
+        float damping = 0.15f;
         float tableMinX = -2.2f, tableMaxX = 1.8f;
         float tableMinZ = -1.2f, tableMaxZ = 1.2f;
         float tableY = 0.0f;
@@ -363,11 +432,8 @@ int main() {
             auto& p = particles[i];
 
             p.velocity.y -= 9.8f * sim_dt;
-
-            // 表面张力防止分叉 (加入Z轴阻尼，消除空中双流震荡分叉现象)
             p.velocity.z -= p.position.z * 6.0f * sim_dt;
-            p.velocity.z *= 0.95f; // 【关键修复】：增加阻尼，让震荡停止，水流完美聚拢为一根
-
+            p.velocity.z *= 0.95f;
             p.position += p.velocity * sim_dt;
 
             bool onTableX = (p.position.x >= tableMinX && p.position.x <= tableMaxX);
@@ -378,8 +444,8 @@ int main() {
                 p.velocity.y *= -damping;
                 p.velocity.x *= 0.90f;
                 p.velocity.z *= 0.80f;
-                p.velocity.x += (((rand() % 100) / 100.0f) * 2.0f - 1.0f) * 0.2f;
-                p.velocity.z += (((rand() % 100) / 100.0f) * 2.0f - 1.0f) * 0.1f;
+                p.velocity.x += (((rand() % 100) / 100.0f) * 2.0f - 1.0f) * 0.3f;
+                p.velocity.z += (((rand() % 100) / 100.0f) * 2.0f - 1.0f) * 0.3f;
             }
 
             if (p.position.y < -3.0f) {
@@ -394,10 +460,13 @@ int main() {
             glBufferSubData(GL_ARRAY_BUFFER, 0, particles.size() * sizeof(Particle), particles.data());
         }
 
+
+        // Render pipeline
         glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
         glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
 
         bool horizontal = true;
+        GLuint finalSmoothedDepth = depthTex;
 
         if (!particles.empty()) {
             glBindFramebuffer(GL_FRAMEBUFFER, depthFBO);
@@ -420,21 +489,34 @@ int main() {
             glDisable(GL_BLEND);
 
             bool first_iteration = true;
-            smoothShader.use();
-            smoothShader.setMat4("projection", projection);
-            smoothShader.setVec2("texelSize", glm::vec2(1.0f / fbWidth, 1.0f / fbHeight));
-            smoothShader.setFloat("dt", ui_smoothingDt);
+
+            // Dynamically select active shader based on UI selection
+            Shader* activeSmoothShader = &smoothShader;
+            if (ui_smoothingMethod == 1) activeSmoothShader = &gaussianShader;
+            else if (ui_smoothingMethod == 2) activeSmoothShader = &bilateralShader;
+
+            activeSmoothShader->use();
+            activeSmoothShader->setMat4("projection", projection);
+            activeSmoothShader->setMat4("invProjection", glm::inverse(projection));
+            activeSmoothShader->setVec2("texelSize", glm::vec2(1.0f / fbWidth, 1.0f / fbHeight));
+
+            if (ui_smoothingMethod == 0) {
+                activeSmoothShader->setFloat("dt", ui_smoothingDt);
+            }
 
             glBindVertexArray(quadVAO);
             for (int i = 0; i < ui_smoothingIterations; i++) {
                 glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO[horizontal]);
                 glActiveTexture(GL_TEXTURE0);
                 glBindTexture(GL_TEXTURE_2D, first_iteration ? depthTex : pingpongTex[!horizontal]);
-                smoothShader.setInt("depthMap", 0);
+
+                activeSmoothShader->setInt("depthMap", 0);
+
                 glDrawArrays(GL_TRIANGLES, 0, 6);
                 horizontal = !horizontal;
                 if (first_iteration) first_iteration = false;
             }
+            if (ui_smoothingIterations > 0) finalSmoothedDepth = pingpongTex[!horizontal];
 
             glBindFramebuffer(GL_FRAMEBUFFER, noiseFBO);
             glViewport(0, 0, fbWidth, fbHeight);
@@ -448,13 +530,14 @@ int main() {
             noiseShader.setVec2("texelSize", glm::vec2(1.0f / fbWidth, 1.0f / fbHeight));
             noiseShader.setFloat("noiseMultiplier", ui_noiseMultiplier);
 
-            glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, pingpongTex[!horizontal]);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, finalSmoothedDepth);
             noiseShader.setInt("smoothedDepthMap", 0);
             glBindVertexArray(particleVAO); glDrawArrays(GL_POINTS, 0, particles.size());
             glDisable(GL_BLEND);
         }
 
-        // ================== 最终合成渲染 ==================
+        // Final composite rendering
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glViewport(0, 0, fbWidth, fbHeight);
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -470,39 +553,58 @@ int main() {
             glBindVertexArray(skyboxVAO); glDrawArrays(GL_TRIANGLES, 0, 36);
         }
 
-        // --- 绘制实体贴图模型 ---
-        if (!pipeMeshes.empty()) {
+        if (!pipeMeshes.empty() || !slabMeshes.empty()) {
             glEnable(GL_DEPTH_TEST);
             glDisable(GL_BLEND);
 
             modelShader.use();
             modelShader.setMat4("view", view);
             modelShader.setMat4("projection", projection);
-
-            glm::mat4 model = glm::mat4(1.0f);
-            model = glm::translate(model, glm::vec3(-3.0f, 4.8f, 0.0f));
-            model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-            // 【修改】：模型放大1.2倍
-            model = glm::scale(model, glm::vec3(1.4f, 1.4f, 1.4f));
-
-            modelShader.setMat4("model", model);
             modelShader.setVec3("lightDir", glm::normalize(glm::vec3(0.5, 1.0, 0.8)));
             modelShader.setVec3("viewPos", cameraPos);
 
-            // 【注入贴图】：为模型绑定四张基于物理的精美贴图
-            glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, albedoMap); modelShader.setInt("albedoMap", 0);
-            glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, metallicMap); modelShader.setInt("metallicMap", 1);
-            glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, roughnessMap); modelShader.setInt("roughnessMap", 2);
-            glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D, aoMap); modelShader.setInt("aoMap", 3);
+            // Draw water pipe
+            if (!pipeMeshes.empty()) {
+                glm::mat4 pipeModel = glm::mat4(1.0f);
+                pipeModel = glm::translate(pipeModel, glm::vec3(-3.0f, 4.8f, 0.0f));
+                pipeModel = glm::rotate(pipeModel, glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+                pipeModel = glm::scale(pipeModel, glm::vec3(1.4f, 1.4f, 1.4f));
+                modelShader.setMat4("model", pipeModel);
 
-            for (auto& mesh : pipeMeshes) {
-                glBindVertexArray(mesh.VAO);
-                glDrawElements(GL_TRIANGLES, mesh.indices.size(), GL_UNSIGNED_INT, 0);
-                glBindVertexArray(0);
+                glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, pipeAlbedo); modelShader.setInt("albedoMap", 0);
+                glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, pipeMetallic); modelShader.setInt("metallicMap", 1);
+                glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, pipeRoughness); modelShader.setInt("roughnessMap", 2);
+                glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D, pipeAO); modelShader.setInt("aoMap", 3);
+
+                for (auto& mesh : pipeMeshes) {
+                    glBindVertexArray(mesh.VAO);
+                    glDrawElements(GL_TRIANGLES, mesh.indices.size(), GL_UNSIGNED_INT, 0);
+                    glBindVertexArray(0);
+                }
+            }
+
+            // Draw slate
+            if (!slabMeshes.empty()) {
+                glm::mat4 slabModel = glm::mat4(1.0f);
+                slabModel = glm::translate(slabModel, glm::vec3(1.3f, -0.5f, 0.0f));
+                slabModel = glm::rotate(slabModel, glm::radians(30.0f), glm::vec3(0.0f, 0.0f, -1.0f));
+                slabModel = glm::scale(slabModel, glm::vec3(10.0f, 4.2f, 4.0f));
+                modelShader.setMat4("model", slabModel);
+
+                glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, slabAlbedo); modelShader.setInt("albedoMap", 0);
+                glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, dummyMetallic); modelShader.setInt("metallicMap", 1);
+                glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, dummyRoughness); modelShader.setInt("roughnessMap", 2);
+                glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D, slabAO); modelShader.setInt("aoMap", 3);
+
+                for (auto& mesh : slabMeshes) {
+                    glBindVertexArray(mesh.VAO);
+                    glDrawElements(GL_TRIANGLES, mesh.indices.size(), GL_UNSIGNED_INT, 0);
+                    glBindVertexArray(0);
+                }
             }
         }
 
-        // 捕获背景供流体物理折射
+        // Capture background for fluid refraction
         glBindTexture(GL_TEXTURE_2D, backgroundTex);
         glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, fbWidth, fbHeight);
 
@@ -521,7 +623,8 @@ int main() {
             compositeShader.setFloat("transparencyScale", ui_transparencyScale);
             compositeShader.setFloat("refractionStrength", ui_refractionStrength);
 
-            glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, pingpongTex[!horizontal]);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, finalSmoothedDepth);
             compositeShader.setInt("smoothedDepthMap", 0);
 
             glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, thicknessTex);

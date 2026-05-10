@@ -36,32 +36,28 @@ void main() {
     float depth = texture(smoothedDepthMap, TexCoords).r;
     if (depth >= 1.0) discard;
 
-    // 强制限幅厚度，防止黑斑
+    // Force clamp thickness to prevent black spots
     float thickness = texture(thicknessMap, TexCoords).r;
     thickness = min(thickness, 30.0); 
 
     vec3 viewPos = uvToViewSpace(TexCoords, depth);
     vec3 normal = reconstructNormal(TexCoords, depth, viewPos);
     
-    // 恢复使用粒子叠加的专属 noiseMap
+    // Use dedicated noise map for particle superposition
     float noiseVal = texture(noiseMap, TexCoords).r;
     
-    // 表面波纹
+    // Surface ripples
     float n_dx = texture(noiseMap, TexCoords + vec2(texelSize.x, 0.0)).r - texture(noiseMap, TexCoords - vec2(texelSize.x, 0.0)).r;
     float n_dy = texture(noiseMap, TexCoords + vec2(0.0, texelSize.y)).r - texture(noiseMap, TexCoords - vec2(0.0, texelSize.y)).r;
     vec2 noiseGrad = vec2(n_dx, n_dy) * surfaceRippleStrength;
     if (length(noiseGrad) > 0.8) noiseGrad = normalize(noiseGrad) * 0.8;
     normal = normalize(normal - vec3(noiseGrad, 0.0)); 
 
-    // 屏幕空间折射
+    // Screen space refraction
     vec2 refractedUV = TexCoords + normal.xy * thickness * refractionStrength * 0.05;
     refractedUV = clamp(refractedUV, 0.0, 1.0);
     vec3 bgColor = texture(backgroundTex, refractedUV).rgb;
 
-    // ==========================================
-    // 【完美透明度平衡】：倍率从 0.005 恢复到 0.2
-    // 这样水既通透，又有浓郁的蓝色体积感！
-    // ==========================================
     vec3 absorbColor = vec3(1.0) - fluidColor;
     vec3 transmittance = exp(-absorbColor * thickness * transparencyScale * 0.2);
     
@@ -76,7 +72,7 @@ void main() {
 
     vec3 finalColor = mix(baseWaterColor, vec3(0.8, 0.9, 1.0), fresnel) + vec3(0.6) * spec;
 
-    // 恢复粒子物理泡沫，并限制最大不透明度
+    // Physical foam from particles, limit maximum opacity
     float foamIntensity = smoothstep(foamThresholdMin, foamThresholdMax, noiseVal);
     foamIntensity = clamp(foamIntensity * 0.8, 0.0, 0.8); 
     

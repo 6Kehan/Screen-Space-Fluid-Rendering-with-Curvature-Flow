@@ -6,10 +6,9 @@ void main() {
     float mag = dot(N, N);
     
     if (mag > 1.0) discard;
-    
-    // 计算类似高斯核的衰减，中心最厚，边缘最薄
+
     float thickness = exp(-mag * 4.0); 
     
-    // 输出单通道厚度值
+    // Output single-channel thickness value
     FragColor = vec4(thickness, 0.0, 0.0, 1.0);
 }

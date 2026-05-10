@@ -1,4 +1,4 @@
-# --- Visual Studio 临时文件与构建输出 ---
+# --- Visual Studio ---
 .vs/
 Debug/
 Release/
@@ -7,9 +7,17 @@ x86/
 build/
 *.user
 *.aps
-*.pdb
+*.suo
+*.sdf
+*.opensdf
+*.VC.db
+*.VC.opendb
+ipch/
+
+# --- Build outputs ---
 *.obj
 *.exe
+*.pdb
 *.ilk
 *.log
 *.tlog
@@ -18,22 +26,30 @@ build/
 *.iobj
 *.ipdb
 
-# --- 编译产生的数据库与索引 (非常占空间) ---
-*.sdf
-*.opensdf
-*.VC.db
-*.VC.opendb
+# --- External dependencies (DLLs) ---
+x64/Debug/*.dll
 
-# --- 外部库管理 (如果使用 vcpkg) ---
-vcpkg_installed/
+# --- Untracked large assets ---
+*.hdr
+*.glb
+*.fbx
+textures/*.jpg
+textures/*.jpeg
 
-# --- 操作系统临时文件 ---
+# --- Reports & reference ---
+*.pdf
+
+# --- OS files ---
 .DS_Store
 Thumbs.db
 
-# --- 资源文件建议 ---
-# 如果你的 HDR 图或模型文件非常大（比如超过 50MB），建议单独管理，
-# 或者只保留你目前正在使用的这几个。
-# *.hdr
-# *.obj
-# *.glb
+# --- Editor ---
+imgui.ini
+.vscode/
+.idea/
+
+# --- vcpkg ---
+vcpkg_installed/
+
+# --- Backup C++ files ---
+*副本*.cpp

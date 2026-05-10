@@ -9,11 +9,11 @@ uniform float viewportHeight;
 out vec3 viewSpacePos;
 
 void main() {
-    // 转换到观察空间
+    // Transform to view space
     vec4 posEye = view * vec4(aPos, 1.0);
     viewSpacePos = posEye.xyz;
     gl_Position = projection * posEye;
     
-    // 关键：根据透视投影缩放点精灵大小
+    // Scale point sprite size based on perspective projection
     gl_PointSize = (viewportHeight * projection[1][1] * pointRadius) / gl_Position.w;
 }

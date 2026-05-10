@@ -145,8 +145,10 @@
     <ClInclude Include="Shader.h" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="shaders\bilateral_blur.frag" />
     <None Include="shaders\composite.frag" />
     <None Include="shaders\depth.frag" />
+    <None Include="shaders\gaussian_blur.frag" />
     <None Include="shaders\model.frag" />
     <None Include="shaders\model.vert" />
     <None Include="shaders\noise.frag" />

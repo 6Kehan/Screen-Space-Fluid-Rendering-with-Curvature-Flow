@@ -15,31 +15,30 @@ class Shader
 public:
     unsigned int ID;
 
-    // 构造函数读取并构建着色器
+    // Constructor reads and builds the shader
     Shader(const char* vertexPath, const char* fragmentPath)
     {
-        // 1. 从文件路径获取顶点/片段着色器
+        // Retrieve vertex/fragment source code from file path
         std::string vertexCode;
         std::string fragmentCode;
         std::ifstream vShaderFile;
         std::ifstream fShaderFile;
 
-        // 保证 ifstream 对象可以抛出异常：
         vShaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
         fShaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
         try
         {
-            // 打开文件
+            // Open files
             vShaderFile.open(vertexPath);
             fShaderFile.open(fragmentPath);
             std::stringstream vShaderStream, fShaderStream;
-            // 读取文件的缓冲内容到数据流中
+            // Read file's buffer contents into streams
             vShaderStream << vShaderFile.rdbuf();
             fShaderStream << fShaderFile.rdbuf();
-            // 关闭文件处理器
+            // Close file handlers
             vShaderFile.close();
             fShaderFile.close();
-            // 转换数据流到 string
+            // Convert stream into string
             vertexCode = vShaderStream.str();
             fragmentCode = fShaderStream.str();
         }
@@ -50,40 +49,40 @@ public:
         const char* vShaderCode = vertexCode.c_str();
         const char* fShaderCode = fragmentCode.c_str();
 
-        // 2. 编译着色器
+        // Compile shaders
         unsigned int vertex, fragment;
 
-        // 顶点着色器
+        // Vertex Shader
         vertex = glCreateShader(GL_VERTEX_SHADER);
         glShaderSource(vertex, 1, &vShaderCode, NULL);
         glCompileShader(vertex);
         checkCompileErrors(vertex, "VERTEX");
 
-        // 片段着色器
+        // Fragment Shader
         fragment = glCreateShader(GL_FRAGMENT_SHADER);
         glShaderSource(fragment, 1, &fShaderCode, NULL);
         glCompileShader(fragment);
         checkCompileErrors(fragment, "FRAGMENT");
 
-        // 着色器程序
+        // Shader Program
         ID = glCreateProgram();
         glAttachShader(ID, vertex);
         glAttachShader(ID, fragment);
         glLinkProgram(ID);
         checkCompileErrors(ID, "PROGRAM");
 
-        // 删除着色器，它们已经链接到我们的程序中了，已经不再需要了
+        // Delete the shaders as they're linked into our program now and no longer necessary
         glDeleteShader(vertex);
         glDeleteShader(fragment);
     }
 
-    // 激活程序
+    // Activate the shader
     void use()
     {
         glUseProgram(ID);
     }
 
-    // uniform 工具函数
+    // Uniform utility functions
     void setBool(const std::string& name, bool value) const {
         glUniform1i(glGetUniformLocation(ID, name.c_str()), (int)value);
     }
@@ -113,7 +112,7 @@ public:
     }
 
 private:
-    // 检查着色器编译/链接错误的辅助函数
+    // Utility function for checking shader compilation/linking errors
     void checkCompileErrors(unsigned int shader, std::string type)
     {
         int success;
